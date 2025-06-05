@@ -106,7 +106,7 @@ async def current_user_me(current_user: User = Depends(get_current_user)):
 
 @app.post("/add")
 async def add_products(product: ProductCreate, user: User = Depends(get_current_user), db: Session = Depends(start_db)):
-    category_db = db.query(Category).filter(product.category == Category.name).first()
+    category_db: Category = db.query(Category).filter(product.category == Category.name).first()
     new_product = Product(
         name=product.name,
         price=product.price,
@@ -114,7 +114,7 @@ async def add_products(product: ProductCreate, user: User = Depends(get_current_
         seller_id=user.id
     )
     if category_db:
-        new_product.category = category_db
+        new_product.category = category_db.name
     db.add(new_product)
     db.commit()
     db.refresh(new_product)
