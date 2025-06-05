@@ -9,4 +9,9 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
-
+class ProductCreate(BaseModel):
+    name: str
+    description: str
+    category: str
+    price: float
+    photo_url: str | None = None

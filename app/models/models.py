@@ -1,7 +1,7 @@
 from collections import Counter
 from typing import List
 
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, func
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, func, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Mapped
 #metadata = Base.metadata
@@ -38,6 +38,7 @@ class Product(Base):
     __tablename__ = "product"
     id = Column(Integer, primary_key=True)
     name = Column(String(64), nullable=False)
+    price: float = Column(Float, nullable=False)
     description = Column(String(512), nullable=False)
     seller_id = Column(ForeignKey('user.id'))
     seller: Mapped['User'] = relationship(back_populates='products')
