@@ -11,19 +11,22 @@ from starlette import status
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 
-from fastapi import APIRouter, HTTPException, FastAPI, Depends, Path
+from fastapi import APIRouter, HTTPException, FastAPI, Depends, Path, WebSocket, WebSocketDisconnect
 from app.models.user_models import UserCreate, UserLogin, ProductCreate
 from app.utils.password import hash_password, verify_password
 import sqlalchemy
 from dotenv import load_dotenv
 from app.models.models import start_db, Category
 from app.models.models import User, Product
+from typing import List
 load_dotenv()
 
 
 app = FastAPI()
 
 auth_app = FastAPI()
+
+chat_router = APIRouter()
 
 app.mount("/auth", auth_app)
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -44,6 +47,23 @@ fake_users = [
 # Тимчасовий get_current_user (без токенів)
 def get_current_user_fake():
     return fake_users[0]
+
+
+active_connections: List[WebSocket] = []
+
+@chat_router.websocket("/ws/chat")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    active_connections.append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            for connection in active_connections:
+                if connection != websocket:
+                    await connection.send_text(data)
+    except WebSocketDisconnect:
+        active_connections.remove(websocket)
+
 
 def get_user(db, username: str):
     db_user: User = db.query(User).filter(User.username == username).first()
