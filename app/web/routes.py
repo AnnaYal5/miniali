@@ -18,17 +18,21 @@ import sqlalchemy
 from dotenv import load_dotenv
 from app.models.models import start_db, Category
 from app.models.models import User, Product
+
+import json
+from datetime import datetime
+from fastapi import WebSocket, WebSocketDisconnect
 from typing import List
+
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 load_dotenv()
-
-
 app = FastAPI()
-
 auth_app = FastAPI()
-
 chat_router = APIRouter()
-
 app.mount("/auth", auth_app)
+
+
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
@@ -51,18 +55,54 @@ def get_current_user_fake():
 
 active_connections: List[WebSocket] = []
 
-@chat_router.websocket("/ws/chat")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    active_connections.append(websocket)
+
+def get_current_user_token(token: str, db: Session):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"}
+    )
     try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except InvalidTokenError:
+        raise credentials_exception
+
+    user = get_user(db, username)
+    if user:
+        return user
+    raise credentials_exception
+
+
+
+@chat_router.websocket("/ws/chat/{token}")
+async def websocket_endpoint(websocket: WebSocket, token: str):
+    await websocket.accept()
+    db = next(start_db())
+    try:
+        user = get_current_user_token(token, db)
+        username = user.username
+        active_connections.append(websocket)
+
+        print(f"Username connected: {username}")
+        await websocket.send_text(f"Welcome {username}! You are connected")
+
         while True:
             data = await websocket.receive_text()
+            message_data = {
+                "username": username,
+                "message": data,
+                "timestamp": datetime.utcnow().isoformat()
+            }
             for connection in active_connections:
-                if connection != websocket:
-                    await connection.send_text(data)
+                await connection.send_text(json.dumps(message_data))
+
     except WebSocketDisconnect:
         active_connections.remove(websocket)
+        print(f"Client disconnected: {websocket.client}")
+
 
 
 def get_user(db, username: str):
