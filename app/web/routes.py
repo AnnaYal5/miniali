@@ -5,11 +5,11 @@ from typing import Annotated
 from jwt.exceptions import InvalidTokenError
 import jwt
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.exc import OperationalError, InvalidRequestError
 from sqlalchemy.orm import Session
 from starlette import status
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-
 
 from fastapi import APIRouter, HTTPException, FastAPI, Depends, Path, WebSocket, WebSocketDisconnect
 from app.models.user_models import UserCreate, UserLogin, ProductCreate
@@ -36,21 +36,6 @@ app.mount("/auth", auth_app)
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
-
-#треба потім видалити
-fake_products = [
-    {"id": 1, "name": "Socks", "price": 10.0, "description": "Warm socks", "seller_id": 1},
-    {"id": 2, "name": "T-shirt", "price": 20.0, "description": "White t-shirt", "seller_id": 2}
-]
-
-fake_users = [
-    {"id": 1, "username": "anna"},
-    {"id": 2, "username": "john"}
-]
-
-# Тимчасовий get_current_user (без токенів)
-def get_current_user_fake():
-    return fake_users[0]
 
 
 active_connections: List[WebSocket] = []
@@ -170,9 +155,10 @@ async def login(user: UserLogin, db: Session = Depends(start_db)):
 
 
 @app.get('/')
-async def products(db: Session = Depends(start_db)):
-    to_show = db.query(Product).all()
-    return [to_show]
+async def products(page: int, db: Session = Depends(start_db), length: int = 20):
+    offset = (page-1) * length
+    to_show = db.query(Product).offset(offset).limit(length).all()
+    return to_show
 
 @app.get("/users/me")
 async def current_user_me(current_user: User = Depends(get_current_user)):
@@ -196,25 +182,30 @@ async def add_products(product: ProductCreate, user: User = Depends(get_current_
     return {"msg": "added"}
 
 
-@app.delete("/del_fake/{product_id}")
-async def delete_fake_product(
-    product_id: int = Path(..., gt=0),
-    user: dict = Depends(get_current_user_fake)
+@app.delete("/del-product/{product_id}")
+async def delete_product(
+    product_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(start_db)
 ):
-    global fake_products
-    product = next((p for p in fake_products if p["id"] == product_id), None)
-
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    if product["seller_id"] != user["id"]:
-        raise HTTPException(status_code=403, detail="You are not allowed to delete this product")
-
-    fake_products = [p for p in fake_products if p["id"] != product_id]
-    return {"msg": f"Product {product_id} deleted successfully"}
-
-
-
-
+    try:
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise HTTPException(
+                status_code=404,
+                detail="Wrong product id"
+            )
+        else:
+            if product.seller_id != user.id:
+                raise HTTPException(
+                    status_code=403
+                )
+            db.delete(product)
+            db.commit()
+            return {"msg": f'Deleted product with id {product.id} successfully'}
+    except (OperationalError, InvalidRequestError):
+        raise HTTPException(
+            status_code=400
+        )
 
 
