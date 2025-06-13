@@ -27,6 +27,7 @@ class User(Base):
     joined_at = Column(DateTime(timezone=True), server_default=func.now())
     orders: Mapped[List["Order"]] = relationship(back_populates="buyer")
     products: Mapped[List['Product']] = relationship(back_populates='seller')
+    is_admin = Column(Boolean, nullable=False)
 
 class Order(Base):
     __tablename__ = "order"

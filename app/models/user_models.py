@@ -15,3 +15,6 @@ class ProductCreate(BaseModel):
     category: str
     price: float
     photo_url: str | None = None
+
+class CategoryCreate(BaseModel):
+    name:str
